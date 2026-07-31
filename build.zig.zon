@@ -1,0 +1,10 @@
+.{
+    .name = .microgptzig,
+    .version = "1.0.0",
+    .fingerprint = 0x1da1739c674e56d7,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "microgpt.zig",
+    },
+}
