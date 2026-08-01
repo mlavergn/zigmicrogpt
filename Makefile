@@ -26,7 +26,7 @@ clean:
 	rm -rf $(OUTDIR)
 
 build:
-	zig build
+	zig build -Drelease
 
 run:
 	time $(BINARY)

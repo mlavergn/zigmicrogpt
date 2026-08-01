@@ -5,14 +5,14 @@
 // ---------------------------------------------------------------------------
 
 const std = @import("std");
-const microgpt = @import("microgpt.zig");
+const microgpt = @import("gpt_main.zig");
 const Tape = microgpt.Tape;
 const Value = microgpt.Value;
 
 // The random module's own parity tests live beside the code they cover; this
 // pulls them into the same test binary.
 test {
-    _ = @import("random.zig");
+    _ = @import("gpt_random.zig");
 }
 
 test "powers match CPython's float.__pow__" {

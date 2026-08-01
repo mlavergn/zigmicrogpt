@@ -47,24 +47,25 @@ The port is a faithful one. Both programs are seeded identically and reimplement
 
 ## What's here
 
-| File              | Purpose                                              |
-| :---------------- | :--------------------------------------------------- |
-| `microgpt.zig`    | The port. The complete algorithm, start to finish.   |
-| `microgptdoc.zig` | The port with full headerdoc.                        |
-| `microgpt.py`     | Karpathy's original, kept verbatim as the reference. |
-| `input.txt`       | The corpus of names the model learns from.           |
-
-## Optimized
-
-| `microgptmax.zig` | Optimized rewrite of the port.                       |
-| `random.zig`      | The random number generation the port depends on.    |
+| File                | Purpose                                                     |
+| :------------------ | :---------------------------------------------------------- |
+| `microgpt.zig`      | The optimized build, and what `zig build` targets.          |
+| `random.zig`        | The vectorized random number generator it uses.             |
+| `microgpt_port.zig` | The straight port. The complete algorithm, start to finish. |
+| `random_port.zig`   | The random number generation the straight port uses.        |
+| `microgpt_docs.zig` | The straight port with full headerdoc.                      |
+| `microgpt.py`       | Karpathy's original, kept verbatim as the reference.        |
+| `input.txt`         | The corpus of names the model learns from.                  |
 
 ## Performance
 
-| Implementation                 |  Wall time | CPU user time | CPU kernel time |
-| :----------------------------- | ---------: | ------------: | --------------: |
-| Zig with Random + std.math.Pow |  5.75 real |     5.24 user |        0.02 sys |
-| Python                         | 58.31 real |    57.79 user |        0.34 sys |
+Using `zig build -Drelease`
+
+| Implementation | CPU user time |
+| :------------- | ------------: |
+| Python         |    57.79 user |
+| Zig port       |     0.85 user |
+| Zig optimized  |     0.57 user |
 
 ## Credits
 

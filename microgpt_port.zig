@@ -5,7 +5,7 @@
 // @mlavergn
 
 const std = @import("std");
-const Random = @import("random.zig").Random;
+const Random = @import("random_port.zig").Random;
 
 // Let there be Autograd to recursively apply the chain rule
 const Node = struct {

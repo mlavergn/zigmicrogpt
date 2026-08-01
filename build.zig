@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "microgpt",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("microgpt.zig"),
+            .root_source_file = b.path("gpt_main.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
 
     const exe_tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tests.zig"),
+            .root_source_file = b.path("gpt_tests.zig"),
             .target = target,
             .optimize = optimize,
         }),
