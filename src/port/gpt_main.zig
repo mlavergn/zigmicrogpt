@@ -5,10 +5,10 @@
 // @mlavergn
 
 const std = @import("std");
-const Random = @import("random_port.zig").Random;
+const Pow = @import("gpt_pow").Pow;
+const Random = @import("gpt_random.zig").Random;
 
 // Let there be Autograd to recursively apply the chain rule
-/// A node in the computation graph, identified by its index on the `Value`.
 const Node = struct {
     data: f64, // scalar value of this node calculated during the forward pass
     grad: f64, // derivative of the loss w.r.t. this node, calculated in the backward pass
@@ -17,22 +17,14 @@ const Node = struct {
     n_children: u8,
 };
 
-/// The computation graph: every node built during a forward pass, and the
-/// gradients that flow back through them. Nodes are referred to by index,
-/// so the graph owns its own storage and nothing points into it.
 pub const Value = struct {
     gpa: std.mem.Allocator,
     nodes: std.ArrayList(Node) = .empty,
-    /// Scratch for `backward`, reused across steps.
     visited: std.ArrayList(bool) = .empty,
     topo: std.ArrayList(u32) = .empty,
-    /// One entry per node on the walk: which node, and how many of its children
-    /// have been visited so far.
     stack: std.ArrayList(struct { node: u32, next_child: u8 }) = .empty,
-    /// Parameters occupy nodes `0..n_params`; everything above is per-step.
     n_params: usize = 0,
 
-    /// Releases every allocation owned by the graph.
     pub fn deinit(t: *Value) void {
         t.nodes.deinit(t.gpa);
         t.visited.deinit(t.gpa);
@@ -40,89 +32,64 @@ pub const Value = struct {
         t.stack.deinit(t.gpa);
     }
 
-    /// Returns the forward-pass value of a node.
     pub fn data(t: *const Value, v: u32) f64 {
         return t.nodes.items[v].data;
     }
 
-    /// Discards the graph built during a step, keeping the parameters.
     fn rewind(t: *Value) void {
         t.nodes.shrinkRetainingCapacity(t.n_params);
     }
 
-    /// Records a new node on the graph and returns the index that identifies it.
     fn push(t: *Value, d: f64, ch: [2]u32, lg: [2]f64, nch: u8) !u32 {
         const idx: u32 = @intCast(t.nodes.items.len);
         try t.nodes.append(t.gpa, .{ .data = d, .grad = 0, .local_grads = lg, .children = ch, .n_children = nch });
         return idx;
     }
 
-    /// Creates an input node: a value the graph depends on but never derives,
-    /// such as a model parameter.
     pub fn leaf(t: *Value, d: f64) !u32 {
         return t.push(d, .{ 0, 0 }, .{ 0, 0 }, 0);
     }
 
-    /// Creates the node `a + b`.
     pub fn add(t: *Value, a: u32, b: u32) !u32 {
         return t.push(t.data(a) + t.data(b), .{ a, b }, .{ 1, 1 }, 2);
     }
 
-    /// Creates the node `a * b`.
     pub fn mul(t: *Value, a: u32, b: u32) !u32 {
         return t.push(t.data(a) * t.data(b), .{ a, b }, .{ t.data(b), t.data(a) }, 2);
     }
 
-    /// Creates the node `a + k`, for a constant `k`.
     fn addK(t: *Value, a: u32, k: f64) !u32 {
         return t.push(t.data(a) + k, .{ a, 0 }, .{ 1, 0 }, 1);
     }
 
-    /// Creates the node `a * k`, for a constant `k`.
     fn mulK(t: *Value, a: u32, k: f64) !u32 {
         return t.push(t.data(a) * k, .{ a, 0 }, .{ k, 0 }, 1);
     }
 
-    /// Creates the node `a` raised to the constant power `k`.
     fn powK(t: *Value, a: u32, k: f64) !u32 {
         const d = t.data(a);
-        return t.push(std.math.pow(f64, d, k), .{ a, 0 }, .{ k * std.math.pow(f64, d, k - 1), 0 }, 1);
+        return t.push(Pow.pow(d, k), .{ a, 0 }, .{ k * Pow.pow(d, k - 1), 0 }, 1);
     }
 
-    /// Creates the node holding the natural logarithm of `a`.
     fn logv(t: *Value, a: u32) !u32 {
         const d = t.data(a);
         return t.push(@log(d), .{ a, 0 }, .{ 1 / d, 0 }, 1);
     }
 
-    /// Creates the node holding `e` raised to the power of `a`.
     fn expv(t: *Value, a: u32) !u32 {
         const d = t.data(a);
         return t.push(@exp(d), .{ a, 0 }, .{ @exp(d), 0 }, 1);
     }
 
-    /// Creates the node holding `a` with its negative range flattened to zero,
-    /// the network's nonlinearity.
     pub fn relu(t: *Value, a: u32) !u32 {
         const d = t.data(a);
         return t.push(@max(0, d), .{ a, 0 }, .{ if (d > 0) @as(f64, 1) else 0, 0 }, 1);
     }
 
-    // parity: Python's builtin `sum` seeds its accumulator with the integer 0,
-    // so the first term of every sum is really `term + 0`. That node is part of
-    // the graph; dropping it would shift the gradient accumulation order.
-    /// Creates the accumulator a running sum over nodes starts from.
     fn sumInit(t: *Value, first: u32) !u32 {
         return t.addK(first, 0.0);
     }
 
-    // parity: the topological sort is an explicit-stack transcription of
-    // Python's recursive `build_topo`, and yields the identical post-order.
-    // That matters: `+=` on floats is not associative, so a different visit
-    // order would give different gradients in the last bits. It also sidesteps
-    // the recursion depth limit that constrains the Python original.
-    /// Fills in the derivative of `root` with respect to every node it was
-    /// built from, leaving each result in that node's `grad`.
     pub fn backward(t: *Value, root: u32) !void {
         try t.visited.resize(t.gpa, t.nodes.items.len);
         @memset(t.visited.items, false);
@@ -170,27 +137,22 @@ const n_head = 4; // number of attention heads
 const head_dim = n_embd / n_head; // derived dimension of each head
 const max_vocab = 256;
 
-/// A parameter matrix: `n_out` rows of `n_in` values, row-major.
 const Matrix = struct {
     n_out: usize,
     n_in: usize,
     w: []u32,
 
-    /// Returns the weights of output row `i`.
     fn row(m: Matrix, i: usize) []const u32 {
         return m.w[i * m.n_in ..][0..m.n_in];
     }
 };
 
-/// Creates an `n_out` by `n_in` parameter matrix with randomly initialized
-/// weights, each one a leaf of the computation graph.
 fn matrix(t: *Value, r: *Random, gpa: std.mem.Allocator, n_out: usize, n_in: usize) !Matrix {
     const w = try gpa.alloc(u32, n_out * n_in);
     for (w) |*p| p.* = try t.leaf(r.gauss(0, 0.08));
     return .{ .n_out = n_out, .n_in = n_in, .w = w };
 }
 
-/// The weights of one transformer layer: an attention block and an MLP block.
 const Layer = struct {
     attn_wq: Matrix,
     attn_wk: Matrix,
@@ -200,26 +162,18 @@ const Layer = struct {
     mlp_fc2: Matrix,
 };
 
-/// The KV cache doubles as the causal mask: position `p` only ever sees the
-/// keys and values appended by positions `0..p`.
 const Cache = struct {
     keys: [n_layer][block_size][n_embd]u32 = undefined,
     values: [n_layer][block_size][n_embd]u32 = undefined,
     len: usize = 0,
 };
 
-/// Every weight the model has: the embeddings, the layers, and the head that
-/// turns the final activations back into scores over the vocabulary.
 const Model = struct {
     wte: Matrix,
     wpe: Matrix,
     lm_head: Matrix,
     layers: [n_layer]Layer,
 
-    // parity: the creation order below is the insertion order of Python's
-    // `state_dict`, which is what fixes the order the weights are drawn from
-    // the RNG.
-    /// Creates an untrained model sized for `vocab_size` tokens.
     fn init(t: *Value, r: *Random, gpa: std.mem.Allocator, vocab_size: usize) !Model {
         var self: Model = .{
             .wte = try matrix(t, r, gpa, vocab_size, n_embd),
@@ -243,8 +197,6 @@ const Model = struct {
 
 // The model architecture: tokens and parameters in, logits over what comes next
 // Follow GPT-2, blessed among the GPTs, with minor differences: layernorm -> rmsnorm, no biases, GeLU -> ReLU
-/// Projects the vector `x` through the weight matrix `w`, writing one output
-/// per row of `w` into `out`.
 fn linear(t: *Value, out: []u32, x: []const u32, w: Matrix) !void {
     std.debug.assert(out.len == w.n_out and x.len == w.n_in);
     for (out, 0..) |*o, i| {
@@ -255,8 +207,6 @@ fn linear(t: *Value, out: []u32, x: []const u32, w: Matrix) !void {
     }
 }
 
-/// Turns `logits` into a probability distribution over the same positions,
-/// written to `out`: every entry positive, and the whole summing to one.
 pub fn softmax(t: *Value, out: []u32, logits: []const u32) !void {
     std.debug.assert(out.len == logits.len);
     var max_val = t.data(logits[0]);
@@ -264,14 +214,9 @@ pub fn softmax(t: *Value, out: []u32, logits: []const u32) !void {
     for (out, logits) |*e, l| e.* = try t.expv(try t.addK(l, -max_val));
     var total = try t.sumInit(out[0]);
     for (out[1..]) |e| total = try t.add(total, e);
-    // parity: `e / total` is `e * total**-1`, and the comprehension re-evaluates
-    // `total**-1` once per element. A single shared reciprocal would fold the
-    // gradient contributions in a different order.
     for (out) |*e| e.* = try t.mul(e.*, try t.powK(total, -1));
 }
 
-/// Rescales `x` in place to a root-mean-square magnitude of one, keeping the
-/// activations flowing through the network at a stable size.
 pub fn rmsnorm(t: *Value, x: []u32) !void {
     var acc = try t.sumInit(try t.mul(x[0], x[0]));
     for (x[1..]) |xi| acc = try t.add(acc, try t.mul(xi, xi));
@@ -280,10 +225,6 @@ pub fn rmsnorm(t: *Value, x: []u32) !void {
     for (x) |*xi| xi.* = try t.mul(xi.*, scale);
 }
 
-/// Forwards a single token at position `pos_id` through the model, writing one
-/// score per vocabulary entry into `logits` — how strongly the model expects
-/// each token to come next, given this token and everything already in `cache`.
-/// The token's own keys and values are appended to `cache` for later positions.
 fn gpt(t: *Value, model: Model, logits: []u32, token_id: usize, pos_id: usize, cache: *Cache) !void {
     var x: [n_embd]u32 = undefined;
     const tok_emb = model.wte.row(token_id); // token embedding
@@ -293,8 +234,7 @@ fn gpt(t: *Value, model: Model, logits: []u32, token_id: usize, pos_id: usize, c
 
     const pos = cache.len;
     cache.len += 1;
-    // `/ head_dim**0.5` is `* (head_dim**0.5)**-1`
-    const attn_scale = std.math.pow(f64, std.math.pow(f64, @as(f64, head_dim), 0.5), -1);
+    const attn_scale = Pow.pow(Pow.pow(@as(f64, head_dim), 0.5), -1);
 
     for (model.layers, 0..) |layer, li| {
         // 1) Multi-head Attention block
@@ -344,8 +284,6 @@ fn gpt(t: *Value, model: Model, logits: []u32, token_id: usize, pos_id: usize, c
     try linear(t, logits, &x, model.lm_head);
 }
 
-/// Trains a fresh model on the names corpus and then samples new names from it,
-/// reporting progress and the generated names on stdout.
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
     const arena = init.arena.allocator();
@@ -452,14 +390,14 @@ pub fn main(init: std.process.Init) !void {
 
         // Adam optimizer update: update the model parameters based on the corresponding gradients
         const lr_t = learning_rate * (1 - @as(f64, @floatFromInt(step)) / num_steps); // linear learning rate decay
-        const bias1 = 1 - std.math.pow(f64, beta1, @floatFromInt(step + 1));
-        const bias2 = 1 - std.math.pow(f64, beta2, @floatFromInt(step + 1));
+        const bias1 = 1 - Pow.pow(beta1, @floatFromInt(step + 1));
+        const bias2 = 1 - Pow.pow(beta2, @floatFromInt(step + 1));
         for (tape.nodes.items[0..n_params], m, v) |*p, *mi, *vi| {
             mi.* = beta1 * mi.* + (1 - beta1) * p.grad;
-            vi.* = beta2 * vi.* + (1 - beta2) * std.math.pow(f64, p.grad, 2);
+            vi.* = beta2 * vi.* + (1 - beta2) * Pow.pow(p.grad, 2);
             const m_hat = mi.* / bias1;
             const v_hat = vi.* / bias2;
-            p.data -= lr_t * m_hat / (std.math.pow(f64, v_hat, 0.5) + eps_adam);
+            p.data -= lr_t * m_hat / (Pow.pow(v_hat, 0.5) + eps_adam);
             p.grad = 0;
         }
 
@@ -469,7 +407,7 @@ pub fn main(init: std.process.Init) !void {
 
     // Inference: may the model babble back to us
     const temperature = 0.5; // in (0, 1], control the "creativity" of generated text, low to high
-    const inv_temperature = std.math.pow(f64, temperature, -1);
+    const inv_temperature = Pow.pow(temperature, -1);
     try out.print("\n--- inference (new, hallucinated names) ---\n", .{});
     const weights = try arena.alloc(f64, vocab_size);
     const cum = try arena.alloc(f64, vocab_size);

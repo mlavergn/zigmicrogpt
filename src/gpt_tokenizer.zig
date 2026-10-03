@@ -2,8 +2,11 @@
 // back. The corpus is ASCII, so one byte is one character.
 
 const std = @import("std");
+const log = std.log.scoped(.microgptzig_tokenizer);
 
+/// Maps the corpus's characters to token ids and back, with one extra id for BOS.
 pub const Tokenizer = struct {
+    const Self = @This();
     /// A token id per byte, so the vocabulary cannot exceed this.
     const max_vocab = 256;
     /// Token id to character. The unique characters of the corpus, sorted,
@@ -19,8 +22,9 @@ pub const Tokenizer = struct {
     vocab_size: usize = 0,
 
     /// Builds the vocabulary from every character that appears in `docs`.
-    pub fn init(docs: []const []const u8) Tokenizer {
-        var self: Tokenizer = .{};
+    pub fn init(docs: []const []const u8) Self {
+        log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
+        var self: Self = .{};
         var seen = [_]bool{false} ** max_vocab;
         for (docs) |doc| for (doc) |ch| {
             seen[ch] = true;
@@ -37,9 +41,15 @@ pub const Tokenizer = struct {
         return self;
     }
 
+    /// Releases nothing: the tables live inside the struct.
+    pub fn deinit(self: *Self) void {
+        log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
+        _ = self;
+    }
+
     /// Writes `doc` into `tokens` surrounded by BOS on both sides, stopping
     /// early if `tokens` runs out of room. Returns how many slots were written.
-    pub fn encode(self: *const Tokenizer, doc: []const u8, tokens: []usize) usize {
+    pub fn encode(self: *const Self, doc: []const u8, tokens: []usize) usize {
         var n: usize = 0;
         tokens[n] = self.bos;
         n += 1;
@@ -56,7 +66,7 @@ pub const Tokenizer = struct {
     }
 
     /// The character a token stands for.
-    pub fn decode(self: *const Tokenizer, token_id: usize) u8 {
+    pub fn decode(self: *const Self, token_id: usize) u8 {
         return self.uchars[token_id];
     }
 };

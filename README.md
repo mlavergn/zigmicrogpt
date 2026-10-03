@@ -8,7 +8,7 @@ In the spirit of Andrej's project, this project is also open source.
 
 ## What it does
 
-The program trains a small character-level GPT from scratch on a corpus of 32,000 names, then uses what it learned to invent new ones. Training and inference happen in a single run, taking nuder a minute from start to finish.
+The program trains a small character-level GPT from scratch on a corpus of 32,000 names, then uses what it learned to invent new ones. Training and inference happen in a single run, taking under a minute from start to finish.
 
 ```
 num docs: 32033
@@ -43,29 +43,38 @@ I chose Zig to give this framework maximum hardware efficiency with zero runtime
 
 [https://ziglang.org](https://ziglang.org)
 
-The port is a faithful one. Both programs are seeded identically and reimplement the same arithmetic in the same order, so the Zig and the Python produce the same model and the same names — the Zig just gets there 10x sooner.
+The port is a faithful one. Both programs are seeded identically and reimplement the same arithmetic in the same order, so the Zig and the Python produce the same model and the same names — the Zig just gets there over 70x sooner.
 
 ## What's here
 
-| File                | Purpose                                                     |
-| :------------------ | :---------------------------------------------------------- |
-| `microgpt.zig`      | The optimized build, and what `zig build` targets.          |
-| `random.zig`        | The vectorized random number generator it uses.             |
-| `microgpt_port.zig` | The straight port. The complete algorithm, start to finish. |
-| `random_port.zig`   | The random number generation the straight port uses.        |
-| `microgpt_docs.zig` | The straight port with full headerdoc.                      |
-| `microgpt.py`       | Karpathy's original, kept verbatim as the reference.        |
-| `input.txt`         | The corpus of names the model learns from.                  |
+| File                      | Purpose                                                            |
+| :------------------------ | :----------------------------------------------------------------- |
+| `src/gpt_main.zig`        | The optimized build's entry point, and what `zig build` targets.   |
+| `src/gpt_tape.zig`        | The autograd tape: the computation graph and its backward pass.    |
+| `src/gpt_model.zig`       | The model's weights and its forward pass.                          |
+| `src/gpt_trainer.zig`     | The training loop and Adam optimizer.                              |
+| `src/gpt_sampler.zig`     | The sampling loop.                                                 |
+| `src/gpt_tokenizer.zig`   | The character-level tokenizer.                                     |
+| `src/gpt_random.zig`      | The vectorized random number generator.                            |
+| `src/gpt_pow.zig`         | Correctly rounded `pow`, with `std.math.pow` swappable in.         |
+| `src/gpt_bench.zig`       | The benchmarks behind `make bench`.                                |
+| `src/module.zig`          | Re-exports the types above; also the test root (`zig build test`). |
+| `src/port/gpt_main.zig`   | The straight port. The complete algorithm, start to finish.        |
+| `src/port/gpt_random.zig` | CPython's `random`, ported plainly. The straight port's RNG.       |
+| `src/port/gpt_docs.zig`   | The straight port with full headerdoc.                             |
+| `microgpt.py`             | Karpathy's original, kept verbatim as the reference.               |
+| `input.txt`               | The corpus of names the model learns from.                         |
 
 ## Performance
 
-Using `zig build -Drelease`
+CPU user time for one full run (train and sample) on an Apple M5 Max, with the Zig built by
+`zig build -Drelease`. `make bench` measures the two Zig builds side by side.
 
-| Implementation | CPU user time |
-| :------------- | ------------: |
-| Python         |    57.79 user |
-| Zig port       |     0.85 user |
-| Zig optimized  |     0.57 user |
+| Implementation                     | CPU user time |
+| :--------------------------------- | ------------: |
+| Python (`microgpt.py`)             |       63.13 s |
+| Zig straight port (`src/port/`)    |        0.88 s |
+| Zig optimized (`src/gpt_main.zig`) |        0.43 s |
 
 ## Credits
 

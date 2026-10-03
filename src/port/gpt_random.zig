@@ -149,11 +149,12 @@ pub const Random = struct {
     }
 };
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Unit Tests
+//
 // Parity tests. Every expected value below was produced by CPython 3.12 and is
 // reproduced here bit-for-bit; if one of these fails, the port has drifted off
 // microgpt.py's random stream and no amount of matching arithmetic will save it.
-// ---------------------------------------------------------------------------
 
 test "random.random matches CPython after seed(42)" {
     var r: Random = .{};
