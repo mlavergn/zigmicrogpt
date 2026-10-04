@@ -56,6 +56,9 @@ pub fn build(b: *std.Build) void {
         // Nothing else builds the ports, so the test step compiles both.
         test_step.dependOn(&port.step);
         if (std.mem.eql(u8, name, "gpt_main")) {
+            // Installed only on request, so `zig build` still ships just the optimized CLI.
+            const install_port = b.addInstallArtifact(port, .{});
+            b.step("port-build", "Build the straight port into zig-out/bin").dependOn(&install_port.step);
             const run_port = b.addRunArtifact(port);
             run_port.setCwd(b.path(".")); // reads input.txt from its CWD
             b.step("port", "Train and sample with the straight port").dependOn(&run_port.step);

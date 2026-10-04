@@ -35,6 +35,10 @@ build:
 run:
 	time $(BINARY)
 
+# Build the straight port (src/port/gpt_main.zig) on its own, as zig-out/bin/port_gpt_main.
+port:
+	zig build port-build -Drelease
+
 test:
 	zig build test
 
@@ -92,4 +96,4 @@ subpull:
 repo:
 	open "$(REPO_URL)"
 
-.PHONY: all bench build clean data format lint python repo run subpull test validate
+.PHONY: all bench build clean data format lint port python repo run subpull test validate
