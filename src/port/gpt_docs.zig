@@ -381,7 +381,7 @@ pub fn main(init: std.process.Init) !void {
     try out.print("num docs: {d}\n", .{docs.items.len});
 
     // Let there be a Tokenizer to translate strings to sequences of integers ("tokens") and back
-    var seen = [_]bool{false} ** max_vocab;
+    var seen: [max_vocab]bool = @splat(false);
     for (docs.items) |doc| for (doc) |ch| {
         seen[ch] = true;
     };

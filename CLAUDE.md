@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Zig 0.16 port of Karpathy's `microgpt`, a character-level GPT in pure, dependency-free Python
+A Zig 0.17 port of Karpathy's `microgpt`, a character-level GPT in pure, dependency-free Python
 (scalar autograd, hand-rolled Adam, no NumPy/PyTorch, CPU only). The Python original
 `microgpt.py` and its names corpus `input.txt` sit at the root as the reference; the Zig lives
 in `src/`. `build.zig`, `build.zig.zon`, and the `Makefile` stay at the root.

@@ -59,7 +59,7 @@ pub const Model = struct {
     wte: Matrix = .empty,
     wpe: Matrix = .empty,
     lm_head: Matrix = .empty,
-    layers: [n_layer]Layer = [_]Layer{.{}} ** n_layer,
+    layers: [n_layer]Layer = @splat(.{}),
 
     // The creation order below is the insertion order of Python's `state_dict`,
     // which is what fixes the order the weights are drawn from the RNG.

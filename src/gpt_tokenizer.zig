@@ -13,7 +13,7 @@ pub const Tokenizer = struct {
     /// become token ids `0..n_uchars`.
     uchars: [max_vocab]u8 = undefined,
     /// Character to token id, the inverse of `uchars`.
-    token_of: [max_vocab]u8 = [_]u8{0} ** max_vocab,
+    token_of: [max_vocab]u8 = @splat(0),
     /// How many distinct characters the corpus uses.
     n_uchars: usize = 0,
     /// Token id for a special Beginning of Sequence (BOS) token.
@@ -25,7 +25,7 @@ pub const Tokenizer = struct {
     pub fn init(docs: []const []const u8) Self {
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
         var self: Self = .{};
-        var seen = [_]bool{false} ** max_vocab;
+        var seen: [max_vocab]bool = @splat(false);
         for (docs) |doc| for (doc) |ch| {
             seen[ch] = true;
         };

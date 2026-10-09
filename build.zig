@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
         },
     });
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseFast,
+        .preferred_optimize_mode = .fast,
     });
 
     const exe = b.addExecutable(.{
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Train the model and sample from it");
     run_step.dependOn(&run_cmd.step);
@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/gpt_main.zig"),
             .target = target,
-            .optimize = .ReleaseFast,
+            .optimize = .fast,
         }),
     });
     const bench_port = b.addExecutable(.{
@@ -81,7 +81,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/port/gpt_main.zig"),
             .target = target,
-            .optimize = .ReleaseFast,
+            .optimize = .fast,
             .imports = &.{.{ .name = "gpt_pow", .module = pow_module }},
         }),
     });
@@ -90,12 +90,12 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/gpt_bench.zig"),
             .target = target,
-            .optimize = .ReleaseFast,
+            .optimize = .fast,
         }),
     });
     const run_bench = b.addRunArtifact(bench_exe);
-    run_bench.addArtifactArg(bench_cli);
-    run_bench.addArtifactArg(bench_port);
+    run_bench.addArtifactArg2(bench_cli, .{});
+    run_bench.addArtifactArg2(bench_port, .{});
     run_bench.setCwd(b.path(".")); // the CLI reads input.txt from its CWD
     run_bench.has_side_effects = true; // timings are never cached
     const bench_step = b.step("bench", "Time each component against its reference, then both CLIs");
